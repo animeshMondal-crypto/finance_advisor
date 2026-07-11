@@ -23,7 +23,7 @@ public class JwtUtil {
     // Spring injects the values from application.yml into the constructor
     public JwtUtil (
             @Value("${app.jwt.secret}") String secret,
-            @Value("{app.jwt.expiration-ms}") long expirationMs
+            @Value("${app.jwt.expiration-ms}") long expirationMs
     ){
         // Keys.hmacShaKeyFor converts your plain string secret into a
         // cryptographically safe SecretKey object suitable for HS256
