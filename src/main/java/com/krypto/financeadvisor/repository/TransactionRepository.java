@@ -51,7 +51,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     // Used for monthly summary and AI context building.
     // -------------------------------------------------------
     @Query("""
-            SELECT new com.krypto.financeadvisor.dto.response.CategorySummaryDto(
+            SELECT new com.krypto.financeadvisor.dto.request.CategorySummaryDto(
                 c.name, SUM(t.amount)
             )
             FROM Transaction t
