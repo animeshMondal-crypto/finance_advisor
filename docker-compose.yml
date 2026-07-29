@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: finance-advisor-db
+    environment:
+      POSTGRES_DB: finance_advisor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      TZ: Asia/Kolkata
+      PGTZ: Asia/Kolkata
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - finance_advisor_data:/var/lib/postgresql/data
+
+volumes:
+  finance_advisor_data:

@@ -68,9 +68,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.ai</groupId>
-			<artifactId>spring-ai-starter-model-openai</artifactId>
+			<artifactId>spring-ai-starter-model-google-genai</artifactId>
+			<version>2.0.0</version>
+			<scope>compile</scope>
 		</dependency>
 
 		<dependency>
