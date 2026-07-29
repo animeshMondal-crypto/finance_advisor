@@ -26,3 +26,8 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 }
+
+//{
+//        "email":"sweta@gmail.com",
+//        "password": "Password@123"
+//        }
