@@ -16,6 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import com.krypto.financeadvisor.kafka.event.BudgetAlertEvent;
+import com.krypto.financeadvisor.kafka.event.BudgetAlertType;
+import com.krypto.financeadvisor.kafka.producer.BudgetAlertProducer;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -32,6 +35,7 @@ public class BudgetService {
     private final UserRepository userRepository;
     private final TransactionRepository transactionRepository;
     private final AuditLogService auditLogService;
+    private final BudgetAlertProducer budgetAlertProducer;
 
     @Transactional
     public BudgetResponse createBudget(Long userId, CreateBudgetRequest request) {
@@ -185,7 +189,10 @@ public class BudgetService {
     public void updateSpendForCategory(Long userId, Long categoryId, BigDecimal amount) {
         budgetRuleRepository.findByUserIdAndCategoryId(userId, categoryId)
                 .ifPresent(budget -> {
-                    budget.setSpentThisMonth(budget.getSpentThisMonth().add(amount));
+                    BigDecimal previousSpent = budget.getSpentThisMonth();
+                    BigDecimal updatedSpent = previousSpent.add(amount);
+
+                    budget.setSpentThisMonth(updatedSpent);
 
                     if (budget.isThresholdExceeded()) {
                         log.warn("Budget threshold exceeded for category: {}",
@@ -193,6 +200,8 @@ public class BudgetService {
                     }
 
                     budgetRuleRepository.save(budget);
+
+                    publishAlertsForNewCrossings(budget, previousSpent, updatedSpent);
                 });
     }
 
@@ -216,5 +225,61 @@ public class BudgetService {
                 currentMonth.atDay(1).atStartOfDay(),
                 LocalDateTime.now()
         );
+    }
+
+    private void publishAlertsForNewCrossings(
+            BudgetRule budget,
+            BigDecimal previousSpent,
+            BigDecimal currentSpent
+    ){
+        BigDecimal warningThreshold = budget.getMonthlyLimit()
+                .multiply(BigDecimal.valueOf(budget.getAlertThresholdPct()))
+                .divide(BigDecimal.valueOf(100));
+
+
+        if(budget.getAlertThresholdPct() < 100 && crossed(previousSpent, currentSpent, warningThreshold)){
+            publishBudgetAlert(
+                    budget,
+                    currentSpent,
+                    budget.getAlertThresholdPct(),
+                    BudgetAlertType.THRESHOLD_REACHED
+            );
+        }
+
+        if (crossed(previousSpent, currentSpent, budget.getMonthlyLimit())) {
+            publishBudgetAlert(
+                    budget,
+                    currentSpent,
+                    100,
+                    BudgetAlertType.BUDGET_EXCEEDED
+            );
+        }
+    }
+
+    private boolean crossed(BigDecimal previousSpend,
+                            BigDecimal currentSpend,
+                            BigDecimal threshold){
+        return previousSpend.compareTo(threshold) < 0 && currentSpend.compareTo(threshold) >=0;
+    }
+
+    private void publishBudgetAlert(BudgetRule budget,
+                                    BigDecimal currentSpend,
+                                    int thresholdPct,
+                                    BudgetAlertType alertType){
+        BudgetAlertEvent event = BudgetAlertEvent
+                .builder()
+                .userId(budget.getUser().getId())
+                .budgetRuleId(budget.getId())
+                .categoryName(budget.getCategory().getName())
+                .monthlyLimit(budget.getMonthlyLimit())
+                .spentThisMonth(currentSpend)
+                .alertThresholdPct(thresholdPct)
+                .alertType(alertType)
+                .budgetMonth(YearMonth.now().toString())
+                .triggeredAt(LocalDateTime.now())
+                .build();
+
+        budgetAlertProducer.publish(event);
+
     }
 }

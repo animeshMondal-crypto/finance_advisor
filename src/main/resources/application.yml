@@ -27,7 +27,7 @@ spring:
             temperature: 0.3
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: localhost:9094
 
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -40,6 +40,10 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: com.krypto.financeadvisor.kafka.event
+
+    topics:
+      expense-recorded: expense-recorded
+      budget-alerts: budget-alerts
 
 app:
   jwt:

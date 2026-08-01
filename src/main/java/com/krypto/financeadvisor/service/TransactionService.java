@@ -34,6 +34,7 @@ public class TransactionService {
     private final CategoryRepository categoryRepository;
     private final AuditLogService auditLogService;
     private final Categorizable categorizable;
+    private final BudgetService budgetService;
 
     // -------------------------------------------------------
     // ATOMICITY DEMO
@@ -83,6 +84,8 @@ public class TransactionService {
                         .findFirst()
                         .orElse(null);
 
+                log.info("this is the category {}", category);
+
                 categorizedByAi = category != null;
             }
         }
@@ -104,6 +107,7 @@ public class TransactionService {
                 .description(request.description())
                 .account(account)
                 .category(category)
+                .aiCategoryRaw(category != null ? category.getName() : "Other")
                 .categorizedByAi(categorizedByAi)
                 .occurredAt(request.occurredAt() != null
                         ? request.occurredAt()
@@ -111,6 +115,14 @@ public class TransactionService {
                 .build();
 
         Transaction saved = transactionRepository.save(transaction);
+
+        if (saved.getType() == TransactionType.DEBIT && category != null) {
+            budgetService.updateSpendForCategory(
+                    userId,
+                    category.getId(),
+                    saved.getAmount()
+            );
+        }
 
 
         auditLogService.log("CREATE_TRANSACTION", "Transaction", saved.getId(), userId,
