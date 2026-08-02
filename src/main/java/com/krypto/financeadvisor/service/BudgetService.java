@@ -13,6 +13,9 @@ import com.krypto.financeadvisor.repository.TransactionRepository;
 import com.krypto.financeadvisor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +40,10 @@ public class BudgetService {
     private final AuditLogService auditLogService;
     private final BudgetAlertProducer budgetAlertProducer;
 
+    @CacheEvict(
+            value = "budgets",
+            key = "#userId"
+    )
     @Transactional
     public BudgetResponse createBudget(Long userId, CreateBudgetRequest request) {
         if (budgetRuleRepository.existsByUserIdAndCategoryId(userId, request.categoryId())) {
@@ -71,6 +78,10 @@ public class BudgetService {
         return BudgetResponse.from(saved);
     }
 
+    @Cacheable(
+            value = "budgets",
+            key = "#userId"
+    )
     @Transactional(readOnly = true)
     public List<BudgetResponse> getAllBudgets(Long userId) {
         return budgetRuleRepository.findByUserId(userId)
@@ -79,11 +90,19 @@ public class BudgetService {
                 .toList();
     }
 
+    @Cacheable(
+            value = "budgets",
+            key = "#userId + '-budget-' + #budgetId"
+    )
     @Transactional(readOnly = true)
     public BudgetResponse getBudget(Long userId, Long budgetId) {
         return BudgetResponse.from(getOwnedBudget(userId, budgetId));
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "budgets", key = "#userId"),
+            @CacheEvict(value = "budgets", key = "#userId + '-budget-' + #budgetId")
+    })
     @Transactional
     public BudgetResponse updateBudget(Long userId, Long budgetId, UpdateBudgetRequest request) {
         BudgetRule budget = getOwnedBudget(userId, budgetId);
@@ -98,6 +117,10 @@ public class BudgetService {
         return BudgetResponse.from(budgetRuleRepository.save(budget));
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "budgets", key = "#userId"),
+            @CacheEvict(value = "budgets", key = "#userId + '-budget-' + #budgetId")
+    })
     @Transactional
     public void deleteBudget(Long userId, Long budgetId) {
         BudgetRule budget = getOwnedBudget(userId, budgetId);
@@ -128,6 +151,10 @@ public class BudgetService {
     // This is critical for month-end batch jobs where accuracy
     // across all rows must be consistent.
     // -------------------------------------------------------
+    @Caching(evict = {
+            @CacheEvict(value = "budgets",    allEntries = true),
+            @CacheEvict(value = "tx-summary", key = "#userId")
+    })
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     public List<BudgetResponse> rolloverBudgets(Long userId) {
         List<BudgetRule> budgets = budgetRuleRepository.findByUserId(userId);
@@ -185,6 +212,7 @@ public class BudgetService {
     // DEBIT transaction to keep spentThisMonth up to date
     // in real time, without waiting for manual rollover.
     // -------------------------------------------------------
+    @CacheEvict(value = "budgets", key = "#userId")
     @Transactional
     public void updateSpendForCategory(Long userId, Long categoryId, BigDecimal amount) {
         budgetRuleRepository.findByUserIdAndCategoryId(userId, categoryId)

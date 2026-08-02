@@ -11,6 +11,9 @@ import com.krypto.financeadvisor.repository.AccountRepository;
 import com.krypto.financeadvisor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,7 @@ public class AccountService {
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
 
+    @CacheEvict(value = "accounts", key = "#userId")
     @Transactional
     public AccountResponse createAccount(Long userId, CreateAccountRequest request) {
         User user = userRepository.findById(userId)
@@ -53,6 +57,7 @@ public class AccountService {
 
     // readOnly = true — Hibernate skips dirty checking on all entities
     // loaded in this transaction, giving a small performance boost
+    @Cacheable(value = "accounts", key = "#userId")
     @Transactional(readOnly = true)
     public List<AccountResponse> getUserAccounts(Long userId) {
         return accountRepository.findByUserIdAndActiveTrue(userId)
@@ -61,11 +66,16 @@ public class AccountService {
                 .toList();
     }
 
+    @Cacheable(value = "accounts", key = "#userId + '-' + #accountId")
     @Transactional(readOnly = true)
     public AccountResponse getAccount(Long userId, Long accountId) {
         return AccountResponse.from(getOwnedAccount(userId, accountId));
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "accounts", key = "#userId"),
+            @CacheEvict(value = "accounts", key = "#userId + '-' + #accountId")
+    })
     @Transactional
     public AccountResponse updateAccount(Long userId, Long accountId, String name) {
         Account account = getOwnedAccount(userId, accountId);
@@ -73,6 +83,10 @@ public class AccountService {
         return AccountResponse.from(accountRepository.save(account));
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "accounts", key = "#userId"),
+            @CacheEvict(value = "accounts", key = "#userId + '-' + #accountId")
+    })
     @Transactional
     public void deleteAccount(Long userId, Long accountId) {
         Account account = getOwnedAccount(userId, accountId);
@@ -101,6 +115,11 @@ public class AccountService {
     //    Audit log commits in its own transaction.
     //    Even if the transfer rolls back, the audit entry survives.
     // -------------------------------------------------------
+
+    @Caching(evict = {
+            @CacheEvict(value = "accounts", allEntries = true),
+            @CacheEvict(value = "tx-summary", allEntries = true)
+    })
     @Transactional
     public void transfer(Long userId, TransferRequest request) {
         if (request.fromAccountId().equals(request.toAccountId())) {

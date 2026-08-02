@@ -45,6 +45,18 @@ spring:
       expense-recorded: expense-recorded
       budget-alerts: budget-alerts
 
+  cache:
+    type: caffeine
+    cache-names:
+      - accounts
+      - categories
+      - transactions
+      - tx-summary
+      - budgets
+      - insights
+    caffeine:
+      spec: maximumSize=500,expireAfterWrite=60s
+
 app:
   jwt:
     secret: ${JWT_SECRET}

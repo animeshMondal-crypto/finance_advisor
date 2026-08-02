@@ -35,6 +35,8 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()   // login + register are public
+                        .requestMatchers("/api/test/**").permitAll()
+                        .requestMatchers("/api/cache/**").permitAll()
                         .anyRequest().authenticated()                  // everything else needs a token
                 )
 

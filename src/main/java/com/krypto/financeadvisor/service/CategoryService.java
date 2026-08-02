@@ -7,8 +7,12 @@ import com.krypto.financeadvisor.entity.User;
 import com.krypto.financeadvisor.exception.ResourceNotFountException;
 import com.krypto.financeadvisor.repository.CategoryRepository;
 import com.krypto.financeadvisor.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +27,13 @@ public class CategoryService {
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
 
+//    private final EntityManager entityManager;
+
     // Returns system categories + user's own custom categories
+    @Cacheable(
+            value = "categories",
+            key = "#userId"
+    )
     @Transactional(readOnly = true)
     public List<CategoryResponse> getAllCategories(Long userId) {
         return categoryRepository.findAllVisibleToUser(userId)
@@ -32,6 +42,10 @@ public class CategoryService {
                 .toList();
     }
 
+    @CacheEvict(
+            value = "categories",
+            key = "#userId"
+    )
     @Transactional
     public CategoryResponse createCategory(Long userId, CreateCategoryRequest request) {
         if (categoryRepository.existsByNameAndUserId(request.name(), userId)) {
@@ -58,6 +72,7 @@ public class CategoryService {
         return CategoryResponse.from(saved);
     }
 
+    @CacheEvict(value = "categories", key = "#userId")
     @Transactional
     public CategoryResponse updateCategory(Long userId, Long categoryId,
                                            CreateCategoryRequest request) {
@@ -94,13 +109,24 @@ public class CategoryService {
     //    that used this category, preserving the records.
     // -------------------------------------------------------
 
+    @Caching(evict = {
+            @CacheEvict(value = "categories",   key = "#userId"),
+            @CacheEvict(value = "transactions", key = "#userId")
+    })
     @Transactional
     public void deleteCategory(Long userId, Long categoryId) {
+        log.debug("Cache EVICT — categories + transactions for user {} (category deleted)", userId);
+
         Category category = getOwnedCategory(userId, categoryId);
 
         // Reassign all transactions using this category to uncategorized (null)
         // ON DELETE SET NULL is already in the DB schema, but we also
         // handle it explicitly here for clarity and auditability
+
+//        entityManager.createQuery("UPDATE Transaction t SET t.category = null WHERE t.category.id = :categoryId")
+//                .setParameter("categoryId", categoryId)
+//                .executeUpdate();
+
         categoryRepository.delete(category);
 
         auditLogService.log("DELETE_CATEGORY", "Category", categoryId, userId,

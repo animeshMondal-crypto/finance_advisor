@@ -15,6 +15,9 @@ import com.krypto.financeadvisor.repository.TransactionRepository;
 import com.krypto.financeadvisor.service.interfaces.Categorizable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +51,12 @@ public class TransactionService {
     // transaction record without a corresponding balance change
     // or vice versa. Both happen or neither happens.
     // -------------------------------------------------------
+    @Caching(evict = {
+            @CacheEvict(value = "transactions", key = "#userId"),
+            @CacheEvict(value = "tx-summary",   key = "#userId"),
+            @CacheEvict(value = "accounts",      key = "#userId"),
+            @CacheEvict(value = "budgets",       key = "#userId")
+    })
     @Transactional
     public TransactionResponse logTransaction(Long userId, CreateTransactionRequest request){
         Account account = accountRepository.findById(request.accountId())
@@ -132,6 +141,11 @@ public class TransactionService {
         return TransactionResponse.from(saved);
     }
 
+    @Cacheable(
+            value = "transactions",
+            key = "#userId",
+            condition = "#from == null && #to == null"
+    )
     @Transactional(readOnly = true)
     public List<TransactionResponse> getTransactions(
             Long userId, LocalDateTime from, LocalDateTime to) {
@@ -146,8 +160,14 @@ public class TransactionService {
                 .toList();
     }
 
+    @Cacheable(
+            value = "transactions",
+            key = "#userId + '-tx-' + #transactionId"
+    )
     @Transactional(readOnly = true)
     public TransactionResponse getTransaction(Long userId, Long transactionId) {
+        log.debug("Cache MISS — loading transaction {} from DB", transactionId);
+
         Transaction tx = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> ResourceNotFountException.of("Transaction", transactionId));
 
@@ -158,6 +178,10 @@ public class TransactionService {
         return TransactionResponse.from(tx);
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "transactions", key = "#userId"),
+            @CacheEvict(value = "transactions", key = "#userId + '-tx-' + #transactionId")
+    })
     @Transactional
     public TransactionResponse overrideCategory(Long userId, Long transactionId, Long categoryId) {
         Transaction tx = transactionRepository.findById(transactionId)
@@ -190,8 +214,17 @@ public class TransactionService {
     // This is the same atomicity guarantee as logTransaction
     // but in reverse — a good interview talking point.
     // -------------------------------------------------------
+    @Caching(evict = {
+            @CacheEvict(value = "transactions", key = "#userId"),
+            @CacheEvict(value = "transactions", key = "#userId + '-tx-' + #transactionId"),
+            @CacheEvict(value = "tx-summary",   key = "#userId"),
+            @CacheEvict(value = "accounts",      key = "#userId"),
+            @CacheEvict(value = "budgets",       key = "#userId")
+    })
     @Transactional
     public void deleteTransaction(Long userId, Long transactionId) {
+        log.debug("Cache EVICT — transactions + summary + accounts + budgets for user {}", userId);
+
         Transaction tx = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> ResourceNotFountException.of("Transaction", transactionId));
 
@@ -222,8 +255,16 @@ public class TransactionService {
     // Calculates total income, total expenses, net balance
     // and a per-category breakdown for the given date range
     // -------------------------------------------------------
+    @Cacheable(
+            value = "tx-summary",
+            key = "#userId",
+            condition = "#from == null && #to == null"
+    )
     @Transactional(readOnly = true)
-    public TransactionSummaryResponse getSummary(Long userId, LocalDateTime from, LocalDateTime to) {
+    public TransactionSummaryResponse getSummary(Long userId,
+                                                 LocalDateTime from,
+                                                 LocalDateTime to
+    ) {
         LocalDateTime start = from != null ? from : YearMonth.now().atDay(1).atStartOfDay();
         LocalDateTime end = to != null ? to : LocalDateTime.now();
 

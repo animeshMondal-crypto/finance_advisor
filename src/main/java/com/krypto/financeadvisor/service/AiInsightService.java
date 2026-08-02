@@ -7,6 +7,8 @@ import com.krypto.financeadvisor.repository.AiInsightRepository;
 import com.krypto.financeadvisor.service.ai.NaturalLanguageQueryHandler;
 import com.krypto.financeadvisor.service.interfaces.InsightGenerator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +23,10 @@ public class AiInsightService {
     private final NaturalLanguageQueryHandler nlQueryHandler;
 
     // All insights for the user, newest first
+    @Cacheable(
+            value = "insights",
+            key = "#userId"
+    )
     @Transactional(readOnly = true)
     public List<AiInsightResponse> getAllInsights(Long userId){
         return aiInsightRepository.findByUserIdOrderByGeneratedAtDesc(userId)
@@ -30,6 +36,7 @@ public class AiInsightService {
     }
 
     // Filter by month — e.g. "2026-06"
+    @Cacheable(value = "insights", key = "#userId + '-month-' + #monthYear")
     @Transactional(readOnly = true)
     public List<AiInsightResponse> getInsightsByMonth(Long userId, String monthYear){
         return aiInsightRepository.findByUserIdAndMonthYear(userId, monthYear)
@@ -39,6 +46,7 @@ public class AiInsightService {
     }
 
     // Only return ANOMALY type insights
+    @Cacheable(value = "insights", key = "#userId + '-type-ANOMALY'")
     @Transactional(readOnly = true)
     public List<AiInsightResponse> getAnomalies(Long userId) {
         return aiInsightRepository.findByUserIdAndType(userId, InsightType.ANOMALY)
@@ -48,6 +56,7 @@ public class AiInsightService {
     }
 
     // Only return SUGGESTION type insights
+    @Cacheable(value = "insights", key = "#userId + '-type-SUGGESTION'")
     @Transactional(readOnly = true)
     public List<AiInsightResponse> getSuggestions(Long userId) {
         return aiInsightRepository.findByUserIdAndType(userId, InsightType.SUGGESTION)
@@ -61,6 +70,7 @@ public class AiInsightService {
     // Spring AI call that reads transactions and generates
     // a real monthly summary using ChatClient.
     // -------------------------------------------------------
+    @Cacheable(value = "insights", key = "#userId + '-summary-' + T(java.time.YearMonth).now().toString()")
     @Transactional(readOnly = true)
     public List<AiInsightResponse> getMonthlySummary(Long userId) {
         String currentMonth = YearMonth.now().toString(); // "2026-07"
@@ -71,6 +81,7 @@ public class AiInsightService {
                 .toList();
     }
 
+    @CacheEvict(value = "insights", allEntries = true)
     @Transactional
     public AiInsightResponse generateInsight(Long userId, InsightType type) {
         InsightGenerator generator = insightGenerators.stream()
